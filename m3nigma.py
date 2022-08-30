@@ -4,7 +4,8 @@ from m3u8 import protocol
 from m3u8.parser import save_segment_custom_value
 import urllib.parse
 import sys, getopt
-
+import os
+from pathlib import Path
 def parse_iptv_attributes(line, lineno, data, state):
     # Customize parsing #EXTINF
     if line.startswith(protocol.extinf):
@@ -72,9 +73,10 @@ def parse_m3u(source):
         
     return groups
     
-def save_group(groups,group_name,output):
-    filename = str(output)+ group_name.replace(" ","_").replace("/","_") + ".tv"
-    with open(filename, 'w', encoding="utf-8") as the_file:
+def save_group(groups,group_name,outputfolder,prefix):
+    filename = prefix + group_name.replace(" ","_").replace("/","_") + ".tv"
+    filename_path = os.path.join(outputfolder,filename)
+    with open(filename_path , 'w', encoding="utf-8") as the_file:
         the_file.write("#NAME " + group_name)
         the_file.write("\n")
         for channel in groups[group_name]:
@@ -82,12 +84,7 @@ def save_group(groups,group_name,output):
             the_file.write(line)
             the_file.write("\n")
             
-def save_bouquets_all(groups,filename):
-    #filename = "./output/bouquets.tv"
-    with open(filename, 'w', encoding="utf-8") as the_file:
-        the_file.write('#NAME User - bouquets (TV)\n')
-        for group_name in groups.keys():
-            the_file.write('#SERVICE 1:7:1:0:0:0:0:0:0:0:FROM BOUQUET "m3nigma.'+ group_name.replace(" ","_").replace("/","_") +'.tv" ORDER BY bouquet\n')
+
     
     
 
@@ -98,54 +95,98 @@ def show_groups(filename):
         print(group)
         
 
-def save_groups(filename,output,groupslist):
+def save_groups(filename,outputfolder,prefix,groupslist):
     groups = parse_m3u(filename)
     for group in groupslist:
         print(group)
-        save_group(groups,group,output)
-    pass
+        save_group(groups,group,outputfolder,prefix)
+    return groups
 
-def save_groups_all(filename,output):
+def save_groups_all(filename,outputfolder,prefix):
     groups = parse_m3u(filename)
     
     for group in groups:
         print(group)
-        save_group(groups,group,output)
-    pass
+        save_group(groups,group,outputfolder,prefix)
+    return groups
 
-def save_bouquets_list(filename,output,groupsist):
-    pass
+def save_bouquets_all(groups,prefix,outputfolder):
+    filename = outputfolder+"bouquets.tv"
+    with open(filename, 'w', encoding="utf-8") as the_file:
+        the_file.write('#NAME User - bouquets (TV)\n')
+        for group_name in groups.keys():
+            the_file.write('#SERVICE 1:7:1:0:0:0:0:0:0:0:FROM BOUQUET "'+prefix+group_name.replace(" ","_").replace("/","_") +'.tv" ORDER BY bouquet\n')
+
+def save_bouquets_list(groupslist,prefix,outputfolder):
+    filename = os.path.join(outputfolder,"bouquets.tv")
+    with open(filename, 'w', encoding="utf-8") as the_file:
+        the_file.write('#NAME User - bouquets (TV)\n')
+        for group_name in groupslist:
+            the_file.write('#SERVICE 1:7:1:0:0:0:0:0:0:0:FROM BOUQUET "'+prefix+group_name.replace(" ","_").replace("/","_") +'.tv" ORDER BY bouquet\n')
 
 
 
 
 def main(argv):
-    print("/etc/enigma2")
+    #print("copy files to /etc/enigma2")
     inputfile = ''
-    outputfile = "./output/m3nigma."
+    outputfolder = "./output/"
+    prefix = "m3nigma."
+    save_bouquets = False
+    all_groups = True
+    groupslist = []
+
     try:
-        opts, args = getopt.getopt(argv,"hi:o:s:k:a",["ifile=","ofile=","showgroups=","groupslist="])
+        opts, args = getopt.getopt(argv,"hi:bopsga",["ifile=","ofolder=","prefix=","savebouquets","allgroups","showgroups=","groupslist="])
     except getopt.GetoptError:
-        print ('m3nigma.py -i <inputfile> -o <outputfile>')
+        print ('m3nigma.py -i <inputfile> -o <outputfolder>')
         sys.exit(2)
     for opt, arg in opts:
         if opt == '-h':
-            print ('test.py -i <inputfile> -o <outputfile>')
-            print ('test.py -i <inputfile> -s #Show groups')
+            print('### show all groups')
+            print('py .\m3nigma.py -i "playlist_TV_plus.m3u" -s')
+            print('### export all groups')
+            print('py .\m3nigma.py -i "playlist_TV_plus.m3u" --ofolder="outputfolder" -a')
+            print('### export all groups and generate bouquets.tv file')
+            print('py .\m3nigma.py -i "playlist_TV_plus.m3u" --ofolder="outputfolder" -a -b')
+            print('### export selected groups and generate bouquets.tv file')
+            print('py .\m3nigma.py -i "playlist_TV_plus.m3u" --ofolder="outputfolder" --prefix="myiptvserver." --groupslist="Various,Drama" -b')
             sys.exit()
         elif opt in ("-i", "--ifile"):
             inputfile = arg
-        elif opt in ("-o", "--ofile"):
-            outputfile = arg
+            if not os.path.isfile(inputfile):
+                print("[ERROR]  File ", inputfile, " not extits")
+                sys.exit()
+            else:
+                print("[OK] Reading ", inputfile)
+        elif opt in ("-o", "--ofolder"):
+            outputfolder = Path(arg).resolve()
+            if not os.path.isdir(outputfolder):
+                print("[ERROR] Folder ", outputfolder, " not exits")
+                sys.exit()
+            else:
+                print("[OK] Output folder is: ", outputfolder)
+        elif opt in ("-p", "--prefix"):
+            prefix = arg
+        elif opt in ("-b", "--savebouquets"):
+            save_bouquets = True
         elif opt in ("-s", "--showgroups"):
             show_groups(inputfile)
-        elif opt in ("-k", "--groupslist"):
+            sys.exit()
+        elif opt in ("-g", "--groupslist"):
             groupslist = arg.split(",")
-            print(groupslist)
-            save_groups(inputfile,outputfile,groupslist)
+            all_groups = False
         elif opt in ("-a", "--allgroups"):
-            save_groups_all(inputfile,outputfile)
-         
+            all_groups = True
+    #run:
+    
+    if all_groups:
+        groups = save_groups_all(inputfile,outputfolder,prefix)
+        groupslist=groups.keys()
+    else:
+        save_groups(inputfile,outputfolder,prefix,groupslist)
+    if save_bouquets:
+        save_bouquets_list(groupslist,prefix,outputfolder)
 
 if __name__ == "__main__":
    main(sys.argv[1:])
